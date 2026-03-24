@@ -1,0 +1,160 @@
+version: '3.9'
+
+services:
+  # ─── Database ────────────────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: skillsight_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-skillsight}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skillsight_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-skillsight}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./supabase/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-skillsight} -d ${POSTGRES_DB:-skillsight}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ───────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: skillsight_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── FastAPI Backend ─────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+      target: development
+    container_name: skillsight_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-skillsight}:${POSTGRES_PASSWORD:-skillsight_dev_password}@postgres:5432/${POSTGRES_DB:-skillsight}
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: development
+    volumes:
+      - ./services/api:/app
+      - model_cache:/app/.cache
+    ports:
+      - '8000:8000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8000/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─── Celery Worker ───────────────────────────────────────────────────────
+  worker:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+      target: development
+    container_name: skillsight_worker
+    restart: unless-stopped
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-skillsight}:${POSTGRES_PASSWORD:-skillsight_dev_password}@postgres:5432/${POSTGRES_DB:-skillsight}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./services/api:/app
+      - model_cache:/app/.cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── Celery Flower (monitoring) ──────────────────────────────────────────
+  flower:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+      target: development
+    container_name: skillsight_flower
+    restart: unless-stopped
+    command: celery -A app.celery_app flower --port=5555
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - '5555:5555'
+    depends_on:
+      - redis
+      - worker
+
+  # ─── Next.js Web App ─────────────────────────────────────────────────────
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      target: development
+    container_name: skillsight_web
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - '3000:3000'
+    depends_on:
+      - api
+
+  # ─── Nginx Reverse Proxy ─────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: skillsight_nginx
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - '80:80'
+    depends_on:
+      - web
+      - api
+
+  # ─── Watchtower (auto-update containers on new image) ───────────────────
+  watchtower:
+    image: containrrr/watchtower
+    container_name: skillsight_watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.docker/config.json:/config.json:ro
+    environment:
+      WATCHTOWER_POLL_INTERVAL: 60
+      WATCHTOWER_CLEANUP: 'true'
+      WATCHTOWER_LABEL_ENABLE: 'true'
+      WATCHTOWER_NOTIFICATIONS: 'slack'
+    command: skillsight_api skillsight_worker skillsight_web
+
+volumes:
+  postgres_data:
+  model_cache:
