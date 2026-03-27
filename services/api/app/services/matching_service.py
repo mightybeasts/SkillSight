@@ -48,7 +48,7 @@ class MatchingService:
         Compute full explainable match score between a resume and a job listing.
         """
         # ── 1. Semantic similarity ─────────────────────────────────────────
-        if resume_embedding and job_embedding:
+        if resume_embedding is not None and job_embedding is not None:
             semantic_score = embedding_service.similarity(resume_embedding, job_embedding)
         else:
             # Fallback: encode on-the-fly

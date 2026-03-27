@@ -27,6 +27,17 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # Manual migration: add rejection_reason column if missing
+    from sqlalchemy import text
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text(
+                "ALTER TABLE applications ADD COLUMN IF NOT EXISTS rejection_reason TEXT"
+            ))
+            logger.info('Migration check: rejection_reason column ensured')
+        except Exception as e:
+            logger.warning(f'Migration skip (may already exist): {e}')
+
     # Pre-load AI models to avoid cold start on first request
     from app.services.embedding_service import embedding_service
     from app.services.nlp_service import nlp_service

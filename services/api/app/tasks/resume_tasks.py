@@ -40,7 +40,7 @@ def process_resume(self, resume_id: str, file_bytes_hex: str | None = None):
     4. Generate embedding
     5. Update DB record
     """
-    from app.models.resume import Resume, ResumeSkill
+    from app.models.resume import Resume, ResumeSkill, ProcessingStatus
 
     logger.info(f'Processing resume {resume_id}')
     session = _get_sync_db_session()
@@ -52,7 +52,7 @@ def process_resume(self, resume_id: str, file_bytes_hex: str | None = None):
             return
 
         # Update status to processing
-        resume.processing_status = 'processing'
+        resume.processing_status = ProcessingStatus.processing
         session.commit()
 
         raw_text = resume.raw_text or ''
@@ -95,8 +95,10 @@ def process_resume(self, resume_id: str, file_bytes_hex: str | None = None):
         }
         resume.parsed_data = parsed_data
 
-        # Generate embedding from full text
-        embedding = embedding_service.encode(raw_text[:8000])
+        # Generate embedding from profile data (skills, education, projects)
+        from app.tasks.matching_tasks import _build_profile_text
+        profile_text = _build_profile_text(parsed_data)
+        embedding = embedding_service.encode((profile_text or raw_text)[:8000])
         resume.embedding = embedding
 
         # Upsert skill records
@@ -108,14 +110,18 @@ def process_resume(self, resume_id: str, file_bytes_hex: str | None = None):
                 skill_category=skill['skill_category'],
             ))
 
-        resume.processing_status = 'completed'
+        resume.processing_status = ProcessingStatus.completed
         session.commit()
         logger.info(f'Resume {resume_id} processed successfully')
+
+        # Trigger batch matching against all active jobs
+        from app.tasks.matching_tasks import batch_match_for_user
+        batch_match_for_user.delay(str(resume.owner_id))
 
     except Exception as exc:
         logger.error(f'Resume processing failed for {resume_id}: {exc}')
         if resume:
-            resume.processing_status = 'failed'
+            resume.processing_status = ProcessingStatus.failed
             resume.processing_error = str(exc)
             session.commit()
         raise self.retry(exc=exc)

@@ -102,41 +102,6 @@ services:
       - redis
       - worker
 
-  # ─── Next.js Web App ─────────────────────────────────────────────────────
-  web:
-    build:
-      context: ./apps/web
-      dockerfile: Dockerfile
-      target: development
-    container_name: skillsight_web
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
-    volumes:
-      - ./apps/web:/app
-      - ./tsconfig.base.json:/tsconfig.base.json:ro
-      - /app/node_modules
-      - /app/.next
-    ports:
-      - '3000:3000'
-    depends_on:
-      - api
-
-  # ─── Nginx Reverse Proxy ─────────────────────────────────────────────────
-  nginx:
-    image: nginx:alpine
-    container_name: skillsight_nginx
-    restart: unless-stopped
-    volumes:
-      - ./nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
-    ports:
-      - '80:80'
-    depends_on:
-      - web
-      - api
-
   # ─── Watchtower (auto-update containers on new image) ───────────────────
   # NOTE: Only useful after CI/CD pushes images to ghcr.io
   # Enable in docker-compose.prod.yml or after setting up GitHub Actions
@@ -151,7 +116,7 @@ services:
       WATCHTOWER_POLL_INTERVAL: 60
       WATCHTOWER_CLEANUP: 'true'
       DOCKER_API_VERSION: '1.43'
-    command: --cleanup skillsight_api skillsight_worker skillsight_web
+    command: --cleanup skillsight_api skillsight_worker
 
 volumes:
   postgres_data:

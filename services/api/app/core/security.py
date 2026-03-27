@@ -1,40 +1,21 @@
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
 from app.core.config import settings
 from app.db.supabase import get_supabase_client
-import httpx
+from app.db.database import get_db
+from app.models.user import User, UserRole
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 bearer_scheme = HTTPBearer(auto_error=False)
-
-# Demo user mapping (matches seed data)
-DEMO_USERS = {
-    'a1000000-0000-0000-0000-000000000001': {'id': 'a1000000-0000-0000-0000-000000000001', 'email': 'aisha.khan@example.com', 'role': 'job_seeker'},
-    'a1000000-0000-0000-0000-000000000002': {'id': 'a1000000-0000-0000-0000-000000000002', 'email': 'james.chen@example.com', 'role': 'job_seeker'},
-    'a1000000-0000-0000-0000-000000000003': {'id': 'a1000000-0000-0000-0000-000000000003', 'email': 'maria.garcia@example.com', 'role': 'job_seeker'},
-    'b2000000-0000-0000-0000-000000000001': {'id': 'b2000000-0000-0000-0000-000000000001', 'email': 'sarah.johnson@techcorp.com', 'role': 'recruiter'},
-    'b2000000-0000-0000-0000-000000000002': {'id': 'b2000000-0000-0000-0000-000000000002', 'email': 'david.kim@innovate.io', 'role': 'recruiter'},
-    'c3000000-0000-0000-0000-000000000001': {'id': 'c3000000-0000-0000-0000-000000000001', 'email': 'placement@stanford.edu', 'role': 'admin'},
-}
 
 
 async def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Validate auth: demo header or Supabase JWT."""
-    # Check for demo mode header (only in development)
-    demo_user_id = request.headers.get('X-Demo-User-Id')
-    if demo_user_id and settings.is_development:
-        demo_user = DEMO_USERS.get(demo_user_id)
-        if demo_user:
-            return demo_user
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail='Invalid demo user ID',
-        )
-
-    # Real auth via Supabase JWT
+    """Validate Supabase JWT, auto-create local user if needed, return local user info."""
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -49,12 +30,49 @@ async def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail='Invalid or expired token',
             )
+
+        supabase_user = response.user
+        supabase_id = supabase_user.id
+        email = supabase_user.email
+        role_str = supabase_user.user_metadata.get('role', 'job_seeker')
+        full_name = (
+            supabase_user.user_metadata.get('full_name')
+            or supabase_user.user_metadata.get('name')
+            or email.split('@')[0]
+        )
+        avatar_url = (
+            supabase_user.user_metadata.get('avatar_url')
+            or supabase_user.user_metadata.get('picture')
+        )
+
+        # Look up local user by supabase_id
+        result = await db.execute(
+            select(User).where(User.supabase_id == supabase_id)
+        )
+        local_user = result.scalar_one_or_none()
+
+        if not local_user:
+            # Auto-create local user on first login
+            role = UserRole.recruiter if role_str == 'recruiter' else UserRole.job_seeker
+            local_user = User(
+                supabase_id=supabase_id,
+                email=email,
+                full_name=full_name,
+                avatar_url=avatar_url,
+                role=role,
+            )
+            db.add(local_user)
+            await db.flush()
+            await db.refresh(local_user)
+
         return {
-            'id': response.user.id,
-            'email': response.user.email,
-            'role': response.user.user_metadata.get('role', 'job_seeker'),
+            'id': str(local_user.id),
+            'email': local_user.email,
+            'role': local_user.role.value,
         }
-    except Exception:
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail='Could not validate credentials',

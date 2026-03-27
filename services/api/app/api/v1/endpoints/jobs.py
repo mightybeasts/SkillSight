@@ -86,6 +86,11 @@ async def create_job(
             ))
 
     await db.refresh(job)
+
+    # Trigger batch matching for all users with completed resumes
+    from app.tasks.matching_tasks import batch_match_for_new_job
+    batch_match_for_new_job.delay(str(job.id))
+
     return job
 
 

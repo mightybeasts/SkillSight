@@ -4,14 +4,18 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
-import { demoLogin } from '@/lib/demo-auth'
 
 export default function RecruiterLoginPage() {
   const [loading, setLoading] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [isSignUp, setIsSignUp] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
   async function handleGoogleLogin() {
     setLoading(true)
+    setError(null)
     const supabase = createClient()
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -21,14 +25,47 @@ export default function RecruiterLoginPage() {
       },
     })
     if (error) {
-      console.error('Login error:', error)
+      setError(error.message)
       setLoading(false)
     }
   }
 
-  function handleDemoLogin() {
-    demoLogin('recruiter')
-    router.push('/recruiter/dashboard')
+  async function handleEmailAuth(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    const supabase = createClient()
+
+    if (isSignUp) {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { role: 'recruiter' },
+          emailRedirectTo: `${window.location.origin}/auth/callback?role=recruiter`,
+        },
+      })
+      if (error) {
+        setError(error.message)
+        setLoading(false)
+        return
+      }
+      setError(null)
+      setLoading(false)
+      alert('Check your email for a confirmation link!')
+      return
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) {
+      setError(error.message)
+      setLoading(false)
+      return
+    }
+
+    if (data.user) {
+      router.push('/recruiter/dashboard')
+    }
   }
 
   return (
@@ -97,14 +134,16 @@ export default function RecruiterLoginPage() {
           </div>
 
           <div className="mb-2 inline-flex items-center rounded-full bg-recruiter-50 px-3 py-1 text-xs font-medium text-recruiter-700">
-            Recruiter / HR
+            Recruiter Portal
           </div>
 
           <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">
-            Recruiter Portal
+            {isSignUp ? 'Create your account' : 'Welcome back'}
           </h1>
           <p className="mb-8 text-gray-500">
-            Sign in to screen candidates, manage jobs, and hire with AI precision.
+            {isSignUp
+              ? 'Sign up to start screening candidates with AI.'
+              : 'Sign in to screen candidates, manage jobs, and hire with AI precision.'}
           </p>
 
           {/* Google Sign In */}
@@ -122,61 +161,84 @@ export default function RecruiterLoginPage() {
             {loading ? 'Signing in...' : 'Continue with Google'}
           </button>
 
-          {/* Demo Login */}
+          {/* Divider */}
           <div className="my-6 flex items-center gap-4">
             <div className="h-px flex-1 bg-gray-200" />
             <span className="text-xs text-gray-400">OR</span>
             <div className="h-px flex-1 bg-gray-200" />
           </div>
 
-          <button
-            onClick={handleDemoLogin}
-            className="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-dashed border-recruiter-200 bg-recruiter-50 px-6 py-4 text-base font-medium text-recruiter-700 transition hover:border-recruiter-400 hover:bg-recruiter-100"
-          >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 0 0 .75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 0 0-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0 1 12 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 0 1-.673-.38m0 0A2.18 2.18 0 0 1 3 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 0 1 3.413-.387m7.5 0V5.25A2.25 2.25 0 0 0 13.5 3h-3a2.25 2.25 0 0 0-2.25 2.25v.894m7.5 0a48.667 48.667 0 0 0-7.5 0M12 12.75h.008v.008H12v-.008Z" />
-            </svg>
-            Demo Login as Sarah Johnson (Recruiter)
-          </button>
+          {/* Email/Password Form */}
+          <form onSubmit={handleEmailAuth} className="space-y-4">
+            <div>
+              <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-gray-700">
+                Email address
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="you@company.com"
+                className="h-12 w-full rounded-xl border-2 border-gray-200 bg-white px-4 text-sm text-gray-900 placeholder-gray-400 transition focus:border-recruiter-500 focus:outline-none focus:ring-1 focus:ring-recruiter-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-gray-700">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+                placeholder="Min. 6 characters"
+                className="h-12 w-full rounded-xl border-2 border-gray-200 bg-white px-4 text-sm text-gray-900 placeholder-gray-400 transition focus:border-recruiter-500 focus:outline-none focus:ring-1 focus:ring-recruiter-500"
+              />
+            </div>
 
-          {/* Divider */}
-          <div className="my-6 flex items-center gap-4">
-            <div className="h-px flex-1 bg-gray-200" />
-            <span className="text-xs text-gray-400">RECRUITER TOOLS</span>
-            <div className="h-px flex-1 bg-gray-200" />
-          </div>
+            {error && (
+              <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex h-12 w-full items-center justify-center rounded-xl bg-recruiter-600 text-base font-semibold text-white transition hover:bg-recruiter-700 disabled:opacity-60"
+            >
+              {loading ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
+            </button>
+          </form>
+
+          {/* Toggle sign up / sign in */}
+          <p className="mt-6 text-center text-sm text-gray-500">
+            {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+            <button
+              onClick={() => { setIsSignUp(!isSignUp); setError(null) }}
+              className="font-semibold text-recruiter-600 hover:text-recruiter-700"
+            >
+              {isSignUp ? 'Sign in' : 'Sign up'}
+            </button>
+          </p>
 
           {/* Features */}
-          <div className="space-y-3">
-            {[
-              { icon: '🤖', text: 'Automated AI resume screening & scoring' },
-              { icon: '📈', text: 'Semantic candidate ranking & shortlisting' },
-              { icon: '🔍', text: 'Explainable match scores — no black box' },
-              { icon: '⚡', text: 'Reduce time-to-hire by 70%' },
-            ].map((feature) => (
-              <div key={feature.text} className="flex items-center gap-3 rounded-lg bg-white p-3 text-sm text-gray-600">
-                <span className="text-lg">{feature.icon}</span>
-                {feature.text}
-              </div>
-            ))}
-          </div>
-
-          {/* Other portals */}
           <div className="mt-8 border-t border-gray-200 pt-6">
-            <p className="mb-3 text-xs font-medium text-gray-400">OTHER PORTALS</p>
-            <div className="flex gap-3">
-              <Link
-                href="/login/student"
-                className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-center text-sm font-medium text-gray-600 transition hover:border-student-300 hover:text-student-700"
-              >
-                Job Seeker
-              </Link>
-              <Link
-                href="/login/university"
-                className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-center text-sm font-medium text-gray-600 transition hover:border-university-300 hover:text-university-700"
-              >
-                University
-              </Link>
+            <p className="mb-3 text-xs font-medium text-gray-400">RECRUITER TOOLS</p>
+            <div className="space-y-3">
+              {[
+                { icon: '🤖', text: 'Automated AI resume screening & scoring' },
+                { icon: '📈', text: 'Semantic candidate ranking & shortlisting' },
+                { icon: '🔍', text: 'Explainable match scores — no black box' },
+                { icon: '⚡', text: 'Reduce time-to-hire by 70%' },
+              ].map((feature) => (
+                <div key={feature.text} className="flex items-center gap-3 rounded-lg bg-white p-3 text-sm text-gray-600">
+                  <span className="text-lg">{feature.icon}</span>
+                  {feature.text}
+                </div>
+              ))}
             </div>
           </div>
 

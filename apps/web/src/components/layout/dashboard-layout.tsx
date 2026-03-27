@@ -7,16 +7,14 @@ import { cn } from '@/lib/utils'
 
 export default function DashboardLayout({
   children,
-  role = 'student',
 }: {
   children: React.ReactNode
-  role?: string
 }) {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
     <div className="min-h-screen bg-[#f0f2f5]">
-      <Sidebar role={role} collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
+      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
       <Topbar sidebarCollapsed={collapsed} />
       <main
         className={cn(

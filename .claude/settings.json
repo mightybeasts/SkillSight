@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/dev_new/SkillSight/**)",
+      "Bash(where emulator:*)",
+      "Read(//d/dev_new/SkillSight/$LOCALAPPDATA/Android/Sdk/emulator/**)",
+      "Read(//d/dev_new/SkillSight/$HOME/AppData/Local/Android/Sdk/emulator/**)",
+      "Bash(\"$LOCALAPPDATA/Android/Sdk/emulator/emulator\" -list-avds)",
+      "Bash(\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb\" devices:*)",
+      "Bash(\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb\" wait-for-device:*)",
+      "Bash(\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb\" kill-server:*)",
+      "Bash(\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb\" start-server:*)",
+      "Bash(curl -L -o /tmp/expo-go-52.apk \"https://d1ahtucjixef4r.cloudfront.net/Exponent-2.32.20.apk\")",
+      "Bash(\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb\" install:*)",
+      "Bash(\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb\" uninstall:*)",
+      "Bash(taskkill //F //PID 25904 //PID 14328 //PID 18336)",
+      "Bash(nvm list:*)",
+      "Bash(fnm list:*)"
+    ]
+  }
+}

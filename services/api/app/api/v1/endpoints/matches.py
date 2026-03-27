@@ -2,10 +2,10 @@ from fastapi import APIRouter, HTTPException, Depends
 from app.core.security import get_current_user
 from app.db.database import get_db
 from app.models.match import MatchResult, SkillGap, LearningRecommendation
-from app.models.resume import Resume
+from app.models.resume import Resume, ProcessingStatus
 from app.models.job import JobListing
-from app.schemas.match import MatchRequest, FullMatchAnalysis, MatchResultResponse
-from app.tasks.matching_tasks import compute_match
+from app.schemas.match import MatchRequest, FullMatchAnalysis, MatchResultResponse, MyMatchScoresResponse, MatchScoreSummary
+from app.tasks.matching_tasks import compute_match, batch_match_for_user
 from app.services.resume_optimizer import resume_optimizer
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -36,7 +36,7 @@ async def trigger_match_analysis(
     if not resume:
         raise HTTPException(status_code=404, detail='Resume not found')
 
-    if resume.processing_status != 'completed':
+    if resume.processing_status != ProcessingStatus.completed:
         raise HTTPException(
             status_code=400,
             detail=f'Resume is still being processed (status: {resume.processing_status})',
@@ -54,6 +54,110 @@ async def trigger_match_analysis(
     )
 
     return {'task_id': task.id, 'message': 'Match analysis queued'}
+
+
+@router.post('/compute-all', status_code=202)
+async def trigger_batch_match_for_user(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Trigger match computation for all active jobs the user doesn't have scores for yet."""
+    user_id = current_user['id']
+
+    # Check user has a completed resume
+    result = await db.execute(
+        select(Resume)
+        .where(
+            Resume.owner_id == uuid.UUID(user_id),
+            Resume.processing_status == ProcessingStatus.completed,
+        )
+        .order_by(Resume.is_master.desc())
+        .limit(1)
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        return {'message': 'No completed resume found. Upload a resume first.', 'queued': False}
+
+    batch_match_for_user.delay(user_id)
+    return {'message': 'Match computation queued for all jobs', 'queued': True}
+
+
+@router.get('/my-scores', response_model=MyMatchScoresResponse)
+async def get_my_match_scores(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all pre-computed match scores for the user's primary resume."""
+    # Find master resume, or fallback to most recent completed resume
+    result = await db.execute(
+        select(Resume)
+        .where(
+            Resume.owner_id == uuid.UUID(current_user['id']),
+            Resume.processing_status == ProcessingStatus.completed,
+        )
+        .order_by(Resume.is_master.desc())
+    )
+    resumes = result.scalars().all()
+    if not resumes:
+        return MyMatchScoresResponse(resume_id=None, scores=[])
+
+    primary_resume = resumes[0]
+
+    matches = await db.execute(
+        select(MatchResult)
+        .where(MatchResult.resume_id == primary_resume.id)
+    )
+    scores = [
+        MatchScoreSummary(
+            job_id=m.job_id,
+            resume_id=m.resume_id,
+            overall_score=m.overall_score,
+        )
+        for m in matches.scalars().all()
+    ]
+    return MyMatchScoresResponse(resume_id=primary_resume.id, scores=scores)
+
+
+@router.get('/my-match/{job_id}', response_model=FullMatchAnalysis)
+async def get_my_match_for_job(
+    job_id: uuid.UUID,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get full match analysis for a specific job using the user's primary resume."""
+    # Find master resume, or fallback to most recent completed
+    result = await db.execute(
+        select(Resume)
+        .where(
+            Resume.owner_id == uuid.UUID(current_user['id']),
+            Resume.processing_status == ProcessingStatus.completed,
+        )
+        .order_by(Resume.is_master.desc())
+    )
+    resume = result.scalars().first()
+    if not resume:
+        raise HTTPException(status_code=404, detail='No profile data found. Complete your profile first.')
+
+    match_result = await db.execute(
+        select(MatchResult)
+        .where(MatchResult.resume_id == resume.id, MatchResult.job_id == job_id)
+        .options(
+            selectinload(MatchResult.skill_gaps),
+            selectinload(MatchResult.recommendations),
+        )
+    )
+    match = match_result.scalar_one_or_none()
+    if not match:
+        raise HTTPException(
+            status_code=404,
+            detail='Match analysis not yet available for this job.',
+        )
+
+    return FullMatchAnalysis(
+        match_result=MatchResultResponse.model_validate(match),
+        skill_gaps=match.skill_gaps,
+        recommendations=match.recommendations,
+    )
 
 
 @router.get('/{resume_id}/{job_id}', response_model=FullMatchAnalysis)

@@ -21,6 +21,17 @@ class ProfileUpdate(BaseModel):
     industry: str | None = None
 
 
+class ProfileResponse(BaseModel):
+    model_config = {'from_attributes': True}
+    headline: str | None = None
+    bio: str | None = None
+    location: str | None = None
+    linkedin_url: str | None = None
+    github_url: str | None = None
+    company_name: str | None = None
+    industry: str | None = None
+
+
 class UserResponse(BaseModel):
     model_config = {'from_attributes': True}
     id: uuid.UUID
@@ -28,6 +39,7 @@ class UserResponse(BaseModel):
     full_name: str | None
     avatar_url: str | None
     role: UserRole
+    profile: ProfileResponse | None = None
 
 
 @router.get('/me', response_model=UserResponse)
@@ -36,12 +48,27 @@ async def get_me(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(User).where(User.supabase_id == current_user['id'])
+        select(User).where(User.id == current_user['id'])
     )
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail='User not found')
-    return user
+
+    # Load profile
+    profile_result = await db.execute(
+        select(UserProfile).where(UserProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+
+    resp = UserResponse(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        avatar_url=user.avatar_url,
+        role=user.role,
+        profile=ProfileResponse.model_validate(profile) if profile else None,
+    )
+    return resp
 
 
 @router.patch('/me/profile')
@@ -51,7 +78,7 @@ async def update_profile(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(User).where(User.supabase_id == current_user['id'])
+        select(User).where(User.id == current_user['id'])
     )
     user = result.scalar_one_or_none()
     if not user:
@@ -86,7 +113,7 @@ async def set_role(
         raise HTTPException(status_code=400, detail='Invalid role')
 
     result = await db.execute(
-        select(User).where(User.supabase_id == current_user['id'])
+        select(User).where(User.id == current_user['id'])
     )
     user = result.scalar_one_or_none()
     if not user:

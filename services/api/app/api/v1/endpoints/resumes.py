@@ -2,7 +2,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form, s
 from app.core.security import get_current_user
 from app.core.config import settings
 from app.db.database import AsyncSessionLocal, get_db
-from app.models.resume import Resume
+from app.models.resume import Resume, ProcessingStatus
 from app.schemas.resume import ResumeResponse, ResumeUploadResponse
 from app.services.pdf_service import pdf_service
 from app.tasks.resume_tasks import process_resume
@@ -62,7 +62,7 @@ async def upload_resume(
         is_master=is_master,
         file_name=file.filename,
         file_url=file_url,
-        processing_status='pending',
+        processing_status=ProcessingStatus.pending,
     )
     db.add(resume)
     await db.flush()
@@ -94,7 +94,7 @@ async def create_resume_from_text(
         title=title,
         is_master=is_master,
         raw_text=raw_text,
-        processing_status='pending',
+        processing_status=ProcessingStatus.pending,
     )
     db.add(resume)
     await db.flush()

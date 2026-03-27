@@ -59,3 +59,16 @@ class FullMatchAnalysis(BaseModel):
     match_result: MatchResultResponse
     skill_gaps: list[SkillGapResponse]
     recommendations: list[LearningRecommendationResponse]
+
+
+class MatchScoreSummary(BaseModel):
+    model_config = {'from_attributes': True}
+
+    job_id: uuid.UUID
+    resume_id: uuid.UUID
+    overall_score: float
+
+
+class MyMatchScoresResponse(BaseModel):
+    resume_id: uuid.UUID | None
+    scores: list[MatchScoreSummary]
