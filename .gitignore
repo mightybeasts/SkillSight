@@ -49,6 +49,7 @@ Thumbs.db
 .idea
 *.swp
 *.swo
+.claude/
 
 # Python virtualenv
 venv/
