@@ -27,7 +27,11 @@
       "PowerShell(cmdkey /list)",
       "PowerShell(git credential-manager --version)",
       "PowerShell(git credential-manager github logout anjalik06 2>&1)",
-      "PowerShell(git credential-manager github list 2>&1)"
+      "PowerShell(git credential-manager github list 2>&1)",
+      "Bash(git fetch *)",
+      "Bash(git ls-tree *)",
+      "Bash(grep -iE '\\\\.env$|\\\\.env\\\\.|\\\\.log$|\\\\.tsbuildinfo$|\\\\.docx$|\\\\.pem$|\\\\.key$|secret|credential|password|node_modules|\\\\.next|\\\\.expo|__pycache__|\\\\.cache')",
+      "Bash(grep -v -E '\\\\.\\(png|jpg|jpeg|gif|webp|ico|woff|woff2|ttf|otf|eot|lock\\)$')"
     ]
   }
 }
