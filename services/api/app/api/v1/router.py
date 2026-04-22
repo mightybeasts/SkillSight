@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, resumes, jobs, matches, users, recruiter, applications, skill_gaps, learning
+from app.api.v1.endpoints import auth, resumes, jobs, matches, users, recruiter, applications, skill_gaps, learning, notifications
 
 api_router = APIRouter()
 
@@ -12,3 +12,4 @@ api_router.include_router(recruiter.router, prefix='/recruiter', tags=['Recruite
 api_router.include_router(applications.router, prefix='/applications', tags=['Applications'])
 api_router.include_router(skill_gaps.router, prefix='/skill-gaps', tags=['Skill Gaps'])
 api_router.include_router(learning.router, prefix='/learning', tags=['Learning'])
+api_router.include_router(notifications.router, prefix='/notifications', tags=['Notifications'])

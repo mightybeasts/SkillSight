@@ -26,9 +26,16 @@ __pycache__
 
 # Logs
 *.log
+api_logs.txt
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Local-only docs / drafts
+*.docx
 
 # Docker
 .docker-data/

@@ -13,12 +13,30 @@ import {
 import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as DocumentPicker from 'expo-document-picker'
+import { useRouter } from 'expo-router'
+import { Feather } from '@expo/vector-icons'
 import api from '@/lib/api'
+import { downloadResumePdf } from '@/lib/download-resume'
 
 export default function ResumesScreen() {
   const queryClient = useQueryClient()
+  const router = useRouter()
   const [refreshing, setRefreshing] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+
+  async function handleDownload(id: string, title: string) {
+    try {
+      setDownloadingId(id)
+      await downloadResumePdf(id, title)
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Download failed.'
+      if (Platform.OS === 'web') alert(msg)
+      else Alert.alert('Error', msg)
+    } finally {
+      setDownloadingId(null)
+    }
+  }
 
   const { data: resumes, isLoading, refetch } = useQuery({
     queryKey: ['resumes'],
@@ -67,11 +85,12 @@ export default function ResumesScreen() {
   })
 
   const setMasterMutation = useMutation({
-    mutationFn: async (resumeId: string) => {
-      // Mark all as non-master first, then set this one as master
-      // Since backend doesn't have a dedicated endpoint, we re-upload concept
-      // For now we'll just track it client-side
-      return resumeId
+    mutationFn: (resumeId: string) => api.patch(`/resumes/${resumeId}/set-master`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['resumes'] }),
+    onError: () => {
+      const msg = 'Failed to update master resume.'
+      if (Platform.OS === 'web') alert(msg)
+      else Alert.alert('Error', msg)
     },
   })
 
@@ -168,6 +187,24 @@ export default function ResumesScreen() {
           ) : (
             <Text style={styles.uploadButtonText}>+ Upload PDF Resume</Text>
           )}
+        </TouchableOpacity>
+
+        {/* Build Tailored Resume CTA */}
+        <TouchableOpacity
+          onPress={() => router.push('/resume-builder')}
+          style={styles.builderCta}
+          activeOpacity={0.85}
+        >
+          <View style={styles.builderIcon}>
+            <Feather name="zap" size={18} color="#ffffff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.builderTitle}>Build Tailored Resume</Text>
+            <Text style={styles.builderSub}>
+              Pick a job + template — AI tailors your master resume.
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={18} color="#ffffff" />
         </TouchableOpacity>
 
         {isLoading ? (
@@ -316,6 +353,35 @@ export default function ResumesScreen() {
 
                       {/* Actions */}
                       <View style={styles.cardActions}>
+                        {!resume.is_master && (
+                          <TouchableOpacity
+                            onPress={() => setMasterMutation.mutate(resume.id)}
+                            disabled={setMasterMutation.isPending}
+                            style={styles.masterBtn}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.masterBtnText}>
+                              {setMasterMutation.isPending && setMasterMutation.variables === resume.id
+                                ? 'Setting…'
+                                : 'Set as Master'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity
+                          onPress={() => handleDownload(resume.id, resume.title)}
+                          disabled={downloadingId === resume.id}
+                          style={styles.downloadBtn}
+                          activeOpacity={0.7}
+                        >
+                          {downloadingId === resume.id ? (
+                            <ActivityIndicator color="#ffffff" size="small" />
+                          ) : (
+                            <>
+                              <Feather name="download" size={13} color="#ffffff" />
+                              <Text style={styles.downloadBtnText}>Download PDF</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => handleDelete(resume.id, resume.title)}
                           style={styles.deleteBtn}
@@ -598,6 +664,60 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#dc2626',
+  },
+  masterBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
+  },
+  masterBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1d4ed8',
+  },
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#059669',
+  },
+  downloadBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  builderCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+  },
+  builderIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  builderTitle: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  builderSub: {
+    color: '#cbd5e1',
+    fontSize: 12,
   },
   processingNote: {
     fontSize: 14,

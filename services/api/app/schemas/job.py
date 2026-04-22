@@ -29,7 +29,18 @@ class JobListingCreate(BaseModel):
 
 class JobListingUpdate(BaseModel):
     title: str | None = None
+    company: str | None = None
+    location: str | None = None
+    is_remote: bool | None = None
+    job_type: JobType | None = None
+    experience_level: ExperienceLevel | None = None
+    salary_min: float | None = None
+    salary_max: float | None = None
+    salary_currency: str | None = None
     description: str | None = None
+    requirements: str | None = None
+    responsibilities: str | None = None
+    benefits: str | None = None
     status: JobStatus | None = None
     skills: list[JobSkillInput] | None = None
 
@@ -49,4 +60,7 @@ class JobListingResponse(BaseModel):
     salary_max: float | None
     salary_currency: str
     description: str
+    requirements: str | None = None
+    responsibilities: str | None = None
+    benefits: str | None = None
     status: JobStatus

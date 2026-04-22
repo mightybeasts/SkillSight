@@ -1,6 +1,8 @@
-import { Tabs } from 'expo-router'
-import { View, Text, StyleSheet } from 'react-native'
+import { Tabs, useRouter } from 'expo-router'
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { Feather, Ionicons } from '@expo/vector-icons'
+import { useQuery } from '@tanstack/react-query'
+import api from '@/lib/api'
 
 function TabIcon({ name, color, active }: { name: any; color: string; active?: boolean }) {
   return (
@@ -25,13 +27,27 @@ function HeaderLogo() {
 }
 
 function HeaderRight() {
+  const router = useRouter()
+  const { data } = useQuery({
+    queryKey: ['notifications-unread'],
+    queryFn: () =>
+      api.get('/notifications/unread-count').then((r) => r.data?.count ?? 0).catch(() => 0),
+    refetchInterval: 30_000,
+  })
+  const count: number = data ?? 0
   return (
-    <View style={styles.headerRight}>
+    <TouchableOpacity
+      style={styles.headerRight}
+      onPress={() => router.push('/notifications')}
+      activeOpacity={0.7}
+    >
       <Feather name="bell" size={20} color="#4b5563" />
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>6</Text>
-      </View>
-    </View>
+      {count > 0 && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{count > 9 ? '9+' : String(count)}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
   )
 }
 
@@ -142,7 +158,9 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   headerRight: {
-    marginRight: 20,
+    marginRight: 16,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',

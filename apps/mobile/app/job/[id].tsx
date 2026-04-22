@@ -8,10 +8,13 @@ import {
   StyleSheet,
   Platform,
   Alert,
+  Modal,
+  Pressable,
 } from 'react-native'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Feather } from '@expo/vector-icons'
 import api from '@/lib/api'
 
 export default function JobDetailScreen() {
@@ -19,6 +22,8 @@ export default function JobDetailScreen() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const [optimizedResume, setOptimizedResume] = useState<any>(null)
+  const [selectedResumeId, setSelectedResumeId] = useState<string | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   const { data: job, isLoading: jobLoading } = useQuery({
     queryKey: ['job', id],
@@ -44,6 +49,15 @@ export default function JobDetailScreen() {
   ) || []
 
   const primaryResume = completedResumes.find((r: any) => r.is_master) || completedResumes[0]
+
+  useEffect(() => {
+    if (!selectedResumeId && primaryResume?.id) {
+      setSelectedResumeId(primaryResume.id)
+    }
+  }, [primaryResume?.id, selectedResumeId])
+
+  const selectedResume =
+    completedResumes.find((r: any) => r.id === selectedResumeId) || primaryResume
 
   // Auto-fetch cached match result
   const { data: matchData, isLoading: matchLoading } = useQuery({
@@ -108,7 +122,7 @@ export default function JobDetailScreen() {
     mutationFn: async () => {
       const result = await api.post('/applications/', {
         job_id: id,
-        resume_id: primaryResume?.id || null,
+        resume_id: selectedResume?.id || null,
         cover_letter: '',
       })
       return result.data
@@ -402,25 +416,46 @@ export default function JobDetailScreen() {
               )}
             </View>
           ) : (
-            <View style={styles.actionRow}>
-              <TouchableOpacity
-                onPress={() => applyMutation.mutate()}
-                disabled={applyMutation.isPending}
-                style={[
-                  styles.applyMainBtn,
-                  applyMutation.isPending && styles.buttonDisabled,
-                ]}
-                activeOpacity={0.8}
-              >
-                {applyMutation.isPending ? (
-                  <View style={styles.btnRow}>
-                    <ActivityIndicator color="#ffffff" size="small" />
-                    <Text style={styles.applyBtnText}>Submitting...</Text>
+            <View>
+              {completedResumes.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setPickerOpen(true)}
+                  style={styles.resumePickerRow}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.resumePickerIcon}>
+                    <Feather name="file-text" size={16} color="#2563eb" />
                   </View>
-                ) : (
-                  <Text style={styles.applyBtnText}>Apply Now</Text>
-                )}
-              </TouchableOpacity>
+                  <View style={styles.resumePickerText}>
+                    <Text style={styles.resumePickerLabel}>Applying with</Text>
+                    <Text style={styles.resumePickerName} numberOfLines={1}>
+                      {selectedResume?.title || 'Select a resume'}
+                      {selectedResume?.is_master ? '  (Master)' : ''}
+                    </Text>
+                  </View>
+                  <Feather name="chevron-down" size={18} color="#6b7280" />
+                </TouchableOpacity>
+              )}
+              <View style={styles.actionRow}>
+                <TouchableOpacity
+                  onPress={() => applyMutation.mutate()}
+                  disabled={applyMutation.isPending || !selectedResume}
+                  style={[
+                    styles.applyMainBtn,
+                    (applyMutation.isPending || !selectedResume) && styles.buttonDisabled,
+                  ]}
+                  activeOpacity={0.8}
+                >
+                  {applyMutation.isPending ? (
+                    <View style={styles.btnRow}>
+                      <ActivityIndicator color="#ffffff" size="small" />
+                      <Text style={styles.applyBtnText}>Submitting...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.applyBtnText}>Apply Now</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </View>
@@ -602,6 +637,75 @@ export default function JobDetailScreen() {
           </View>
         )}
       </ScrollView>
+
+      <Modal
+        visible={pickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickerOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setPickerOpen(false)}>
+          <Pressable style={styles.modalSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Choose Resume</Text>
+              <TouchableOpacity onPress={() => setPickerOpen(false)} hitSlop={8}>
+                <Feather name="x" size={20} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+            {completedResumes.length === 0 ? (
+              <Text style={styles.modalEmpty}>No completed resumes yet.</Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 360 }}>
+                {completedResumes.map((r: any) => {
+                  const isSel = r.id === selectedResume?.id
+                  const isTailored = !!r.parsed_data?._target_job_id
+                  return (
+                    <TouchableOpacity
+                      key={r.id}
+                      onPress={() => {
+                        setSelectedResumeId(r.id)
+                        setPickerOpen(false)
+                      }}
+                      style={[styles.modalRow, isSel && styles.modalRowActive]}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.modalRowText}>
+                        <Text style={styles.modalRowTitle} numberOfLines={1}>
+                          {r.title}
+                        </Text>
+                        <View style={styles.modalChips}>
+                          {r.is_master && (
+                            <View style={styles.chipMaster}>
+                              <Text style={styles.chipMasterText}>Master</Text>
+                            </View>
+                          )}
+                          {isTailored && (
+                            <View style={styles.chipTailored}>
+                              <Text style={styles.chipTailoredText}>Tailored</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                      {isSel && <Feather name="check" size={18} color="#2563eb" />}
+                    </TouchableOpacity>
+                  )
+                })}
+              </ScrollView>
+            )}
+            <TouchableOpacity
+              onPress={() => {
+                setPickerOpen(false)
+                router.push('/resume-builder')
+              }}
+              style={styles.modalBuildBtn}
+              activeOpacity={0.8}
+            >
+              <Feather name="plus" size={16} color="#2563eb" />
+              <Text style={styles.modalBuildText}>Build a tailored resume</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -861,6 +965,138 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     gap: 10,
+  },
+  resumePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 10,
+    gap: 12,
+  },
+  resumePickerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resumePickerText: {
+    flex: 1,
+  },
+  resumePickerLabel: {
+    fontSize: 11,
+    color: '#6b7280',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  resumePickerName: {
+    fontSize: 14,
+    color: '#0f172a',
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  modalEmpty: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    paddingVertical: 24,
+  },
+  modalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    gap: 12,
+  },
+  modalRowActive: {
+    backgroundColor: '#eff6ff',
+  },
+  modalRowText: {
+    flex: 1,
+  },
+  modalRowTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  modalChips: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 4,
+  },
+  chipMaster: {
+    backgroundColor: '#fef3c7',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  chipMasterText: {
+    fontSize: 11,
+    color: '#b45309',
+    fontWeight: '700',
+  },
+  chipTailored: {
+    backgroundColor: '#ecfdf5',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  chipTailoredText: {
+    fontSize: 11,
+    color: '#059669',
+    fontWeight: '700',
+  },
+  modalBuildBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
+  },
+  modalBuildText: {
+    color: '#2563eb',
+    fontSize: 14,
+    fontWeight: '700',
   },
   applyMainBtn: {
     flex: 1,

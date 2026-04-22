@@ -1,120 +1,270 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import api from '@/lib/api'
 
-interface DashboardStats {
-  active_jobs: number
-  total_applications: number
-  shortlisted: number
-  avg_match_score: number
+interface Analytics {
+  summary: {
+    active_jobs: number
+    total_applications: number
+    total_shortlisted: number
+    avg_match_score: number | null
+  }
+  pipeline: Record<string, number>
+  score_distribution: { bucket: string; count: number }[]
+  top_missing_skills: { skill: string; count: number }[]
+  per_job: {
+    job_id: string
+    title: string
+    status: string
+    applications: number
+    avg_match_score: number | null
+    shortlisted: number
+    rejected: number
+  }[]
 }
 
+const PIPELINE_STEPS: { key: string; label: string; color: string }[] = [
+  { key: 'applied', label: 'Applied', color: 'bg-blue-500' },
+  { key: 'screening', label: 'Screening', color: 'bg-indigo-500' },
+  { key: 'shortlisted', label: 'Shortlisted', color: 'bg-green-500' },
+  { key: 'interview', label: 'Interview', color: 'bg-purple-500' },
+  { key: 'offer', label: 'Offer', color: 'bg-teal-500' },
+  { key: 'rejected', label: 'Rejected', color: 'bg-red-400' },
+  { key: 'withdrawn', label: 'Withdrawn', color: 'bg-gray-400' },
+]
+
 export default function AnalyticsPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [data, setData] = useState<Analytics | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api.get('/recruiter/dashboard/stats/')
-      .then((res) => setStats(res.data))
-      .catch(() => setStats(null))
+    api.get('/recruiter/analytics')
+      .then((res) => setData(res.data))
+      .catch(() => setError('Failed to load analytics.'))
       .finally(() => setLoading(false))
   }, [])
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Hiring Analytics</h1>
-          <p className="mt-1 text-sm text-gray-500">Overview of your hiring pipeline performance and trends.</p>
-        </div>
+        <Header />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="h-28 animate-pulse rounded-xl border border-gray-200 bg-white" />
           ))}
         </div>
+        <div className="h-64 animate-pulse rounded-xl border border-gray-200 bg-white" />
       </div>
     )
   }
 
-  const summaryCards = [
-    {
-      label: 'Active Jobs',
-      value: stats?.active_jobs ?? 0,
-      icon: (
-        <svg className="h-6 w-6 text-recruiter-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 0 0 .75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 0 0-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0 1 12 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 0 1-.673-.38m0 0A2.18 2.18 0 0 1 3 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 0 1 3.413-.387m7.5 0V5.25A2.25 2.25 0 0 0 13.5 3h-3a2.25 2.25 0 0 0-2.25 2.25v.894m7.5 0a48.667 48.667 0 0 0-7.5 0M12 12.75h.008v.008H12v-.008Z" />
-        </svg>
-      ),
-      iconBg: 'bg-recruiter-50',
-    },
-    {
-      label: 'Total Applications',
-      value: stats?.total_applications ?? 0,
-      icon: (
-        <svg className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
-        </svg>
-      ),
-      iconBg: 'bg-blue-50',
-    },
-    {
-      label: 'Shortlisted',
-      value: stats?.shortlisted ?? 0,
-      icon: (
-        <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-        </svg>
-      ),
-      iconBg: 'bg-green-50',
-    },
-    {
-      label: 'Avg Match Score',
-      value: stats?.avg_match_score ? `${Math.round(stats.avg_match_score * 100)}%` : '—',
-      icon: (
-        <svg className="h-6 w-6 text-orange-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
-        </svg>
-      ),
-      iconBg: 'bg-orange-50',
-    },
-  ]
+  if (!data || error) {
+    return (
+      <div className="space-y-6">
+        <Header />
+        <div className="rounded-xl border border-gray-200 bg-white py-16 text-center">
+          <p className="text-sm text-gray-600">{error || 'No analytics data yet.'}</p>
+        </div>
+      </div>
+    )
+  }
 
-  const hasData = (stats?.active_jobs ?? 0) > 0 || (stats?.total_applications ?? 0) > 0
+  const { summary, pipeline, score_distribution, top_missing_skills, per_job } = data
+  const pipelineMax = Math.max(...PIPELINE_STEPS.map((s) => pipeline[s.key] || 0), 1)
+  const scoreMax = Math.max(...score_distribution.map((s) => s.count), 1)
+  const missingMax = Math.max(...top_missing_skills.map((s) => s.count), 1)
+
+  const hasData = summary.total_applications > 0 || summary.active_jobs > 0
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Hiring Analytics</h1>
-        <p className="mt-1 text-sm text-gray-500">Overview of your hiring pipeline performance and trends.</p>
-      </div>
+      <Header />
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {summaryCards.map((stat) => (
-          <div key={stat.label} className="rounded-xl border border-gray-200 bg-white p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">{stat.label}</p>
-                <p className="mt-2 text-3xl font-bold text-gray-900">{stat.value}</p>
-              </div>
-              <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${stat.iconBg}`}>
-                {stat.icon}
-              </div>
-            </div>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <SummaryCard label="Active Jobs" value={summary.active_jobs} tone="purple" />
+        <SummaryCard label="Total Applications" value={summary.total_applications} tone="blue" />
+        <SummaryCard label="Shortlisted" value={summary.total_shortlisted} tone="green" />
+        <SummaryCard
+          label="Avg Match Score"
+          value={summary.avg_match_score != null ? `${Math.round(summary.avg_match_score * 100)}%` : '—'}
+          tone="orange"
+        />
       </div>
 
-      {!hasData && (
+      {!hasData ? (
         <div className="rounded-xl border border-gray-200 bg-white py-16 text-center">
-          <svg className="mx-auto h-12 w-12 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
-          </svg>
-          <h3 className="mt-4 text-sm font-semibold text-gray-900">No analytics data yet</h3>
-          <p className="mt-1 text-sm text-gray-500">Post jobs and receive applications to see your hiring analytics here.</p>
+          <h3 className="text-sm font-semibold text-gray-900">No analytics data yet</h3>
+          <p className="mt-1 text-sm text-gray-500">Post jobs and receive applications to see insights here.</p>
         </div>
+      ) : (
+        <>
+          {/* Pipeline funnel */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Hiring Pipeline</h2>
+                <p className="mt-0.5 text-xs text-gray-500">Where your candidates are in the funnel.</p>
+              </div>
+              <span className="text-xs text-gray-400">{summary.total_applications} total</span>
+            </div>
+            <div className="space-y-2.5">
+              {PIPELINE_STEPS.map((step) => {
+                const count = pipeline[step.key] || 0
+                const pct = summary.total_applications > 0 ? (count / summary.total_applications) * 100 : 0
+                const width = (count / pipelineMax) * 100
+                return (
+                  <div key={step.key} className="flex items-center gap-3">
+                    <div className="w-24 shrink-0 text-xs font-medium text-gray-600">{step.label}</div>
+                    <div className="relative h-6 flex-1 rounded-md bg-gray-100">
+                      <div
+                        className={`absolute inset-y-0 left-0 rounded-md ${step.color} transition-all`}
+                        style={{ width: `${Math.max(width, count > 0 ? 2 : 0)}%` }}
+                      />
+                      <div className="absolute inset-0 flex items-center justify-between px-2 text-xs font-medium">
+                        <span className={count > 0 ? 'text-white' : 'text-gray-400'}>{count}</span>
+                        <span className="text-gray-500">{pct.toFixed(0)}%</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Score distribution + Top missing skills (side by side on lg) */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {/* Score distribution */}
+            <div className="rounded-xl border border-gray-200 bg-white p-5">
+              <h2 className="text-sm font-semibold text-gray-900">Candidate Quality Distribution</h2>
+              <p className="mt-0.5 text-xs text-gray-500">AI match-score buckets across all your applicants.</p>
+              <div className="mt-5 flex items-end gap-3" style={{ height: '180px' }}>
+                {score_distribution.map((b) => {
+                  const h = (b.count / scoreMax) * 100
+                  const tone = b.bucket === '85-100%' ? 'bg-green-500' : b.bucket === '70-84%' ? 'bg-yellow-400' : b.bucket === '50-69%' ? 'bg-orange-400' : 'bg-red-400'
+                  return (
+                    <div key={b.bucket} className="flex flex-1 flex-col items-center gap-2">
+                      <div className="flex h-full w-full items-end">
+                        <div
+                          className={`w-full rounded-t-md ${tone} transition-all`}
+                          style={{ height: `${Math.max(h, b.count > 0 ? 6 : 0)}%` }}
+                          title={`${b.count} candidates`}
+                        />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-bold text-gray-900">{b.count}</p>
+                        <p className="text-[10px] font-medium text-gray-500">{b.bucket}</p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Top missing skills */}
+            <div className="rounded-xl border border-gray-200 bg-white p-5">
+              <h2 className="text-sm font-semibold text-gray-900">Top Missing Skills</h2>
+              <p className="mt-0.5 text-xs text-gray-500">Skills most often absent from applicants — consider tweaking your postings.</p>
+              {top_missing_skills.length === 0 ? (
+                <p className="mt-6 text-center text-sm text-gray-500">No skill gaps detected yet.</p>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {top_missing_skills.map((s) => {
+                    const w = (s.count / missingMax) * 100
+                    return (
+                      <div key={s.skill} className="flex items-center gap-3">
+                        <span className="w-32 shrink-0 truncate text-xs font-medium text-gray-700" title={s.skill}>{s.skill}</span>
+                        <div className="relative h-5 flex-1 rounded-md bg-gray-100">
+                          <div className="absolute inset-y-0 left-0 rounded-md bg-red-400" style={{ width: `${w}%` }} />
+                        </div>
+                        <span className="w-8 shrink-0 text-right text-xs font-semibold text-gray-700">{s.count}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Per-job breakdown */}
+          <div className="rounded-xl border border-gray-200 bg-white">
+            <div className="border-b border-gray-100 p-5">
+              <h2 className="text-sm font-semibold text-gray-900">Per-Job Performance</h2>
+              <p className="mt-0.5 text-xs text-gray-500">Ranked by applications received.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+                    <th className="px-5 py-3">Job</th>
+                    <th className="px-5 py-3">Status</th>
+                    <th className="px-5 py-3 text-right">Applications</th>
+                    <th className="px-5 py-3 text-right">Avg Match</th>
+                    <th className="px-5 py-3 text-right">Shortlisted</th>
+                    <th className="px-5 py-3 text-right">Rejected</th>
+                    <th className="px-5 py-3 text-right">Shortlist Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {per_job.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-5 py-8 text-center text-sm text-gray-500">No jobs posted yet.</td>
+                    </tr>
+                  ) : (
+                    per_job.map((j) => {
+                      const rate = j.applications > 0 ? (j.shortlisted / j.applications) * 100 : 0
+                      const avg = j.avg_match_score != null ? `${Math.round(j.avg_match_score * 100)}%` : '—'
+                      return (
+                        <tr key={j.job_id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
+                          <td className="px-5 py-3">
+                            <Link href={`/recruiter/jobs/${j.job_id}`} className="font-medium text-gray-900 hover:text-purple-600">{j.title}</Link>
+                          </td>
+                          <td className="px-5 py-3">
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${j.status === 'active' ? 'bg-green-50 text-green-700' : j.status === 'draft' ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-600'}`}>{j.status}</span>
+                          </td>
+                          <td className="px-5 py-3 text-right text-gray-900">{j.applications}</td>
+                          <td className="px-5 py-3 text-right text-gray-900">{avg}</td>
+                          <td className="px-5 py-3 text-right text-green-700">{j.shortlisted}</td>
+                          <td className="px-5 py-3 text-right text-red-600">{j.rejected}</td>
+                          <td className="px-5 py-3 text-right text-gray-700">{rate.toFixed(0)}%</td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
+    </div>
+  )
+}
+
+function Header() {
+  return (
+    <div>
+      <h1 className="text-2xl font-bold text-gray-900">Hiring Analytics</h1>
+      <p className="mt-1 text-sm text-gray-500">Pipeline, candidate quality, skill gaps, and per-job performance.</p>
+    </div>
+  )
+}
+
+function SummaryCard({ label, value, tone }: { label: string; value: number | string; tone: 'purple' | 'blue' | 'green' | 'orange' }) {
+  const bg = {
+    purple: 'bg-purple-50 text-purple-700',
+    blue: 'bg-blue-50 text-blue-700',
+    green: 'bg-green-50 text-green-700',
+    orange: 'bg-orange-50 text-orange-700',
+  }[tone]
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5">
+      <p className="text-xs font-medium text-gray-500">{label}</p>
+      <p className="mt-2 text-3xl font-bold text-gray-900">{value}</p>
+      <span className={`mt-3 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${bg}`}>{tone === 'orange' ? 'quality' : tone === 'green' ? 'outcome' : tone === 'blue' ? 'volume' : 'supply'}</span>
     </div>
   )
 }

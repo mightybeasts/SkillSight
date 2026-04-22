@@ -2,10 +2,12 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from app.core.security import get_current_user
 from app.db.database import get_db
 from app.models.job import JobListing, JobSkill, JobStatus
+from app.models.resume import Resume, ResumeSkill, ProcessingStatus
 from app.schemas.job import JobListingCreate, JobListingUpdate, JobListingResponse
 from app.services.embedding_service import embedding_service
 from app.services.nlp_service import nlp_service
-from sqlalchemy import select, or_
+from app.services.notification_service import notify
+from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 import uuid
 
@@ -91,7 +93,49 @@ async def create_job(
     from app.tasks.matching_tasks import batch_match_for_new_job
     batch_match_for_new_job.delay(str(job.id))
 
+    # Notify candidates with overlapping skills (≥2 of this job's skills)
+    if job.status == JobStatus.active:
+        try:
+            await _notify_matching_candidates(db, job=job)
+        except Exception:
+            pass  # Non-critical: don't fail job creation if notifications fail
+
     return job
+
+
+async def _notify_matching_candidates(db: AsyncSession, *, job: JobListing) -> None:
+    """Notify users whose most recent completed resume has ≥2 skills overlapping the job."""
+    skills_result = await db.execute(
+        select(JobSkill.skill_name).where(JobSkill.job_id == job.id)
+    )
+    job_skills = [s.lower() for s in skills_result.scalars().all() if s]
+    if not job_skills:
+        return
+
+    # Find owners of completed resumes with overlapping skills (count >= 2)
+    overlap_q = (
+        select(Resume.owner_id, func.count(ResumeSkill.id).label('overlap'))
+        .join(ResumeSkill, ResumeSkill.resume_id == Resume.id)
+        .where(
+            Resume.processing_status == ProcessingStatus.completed,
+            Resume.owner_id != job.recruiter_id,
+            func.lower(ResumeSkill.skill_name).in_(job_skills),
+        )
+        .group_by(Resume.owner_id)
+        .having(func.count(ResumeSkill.id) >= 2)
+        .limit(500)
+    )
+    rows = (await db.execute(overlap_q)).all()
+    for owner_id, _overlap in rows:
+        await notify(
+            db,
+            recipient_id=owner_id,
+            type='new_job_match',
+            title='New job match for you',
+            body=f'{job.title} at {job.company} matches your skills.',
+            link_url=f'/job/{job.id}',
+            meta={'job_id': str(job.id), 'job_title': job.title, 'company': job.company},
+        )
 
 
 @router.get('/', response_model=list[JobListingResponse])

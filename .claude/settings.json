@@ -15,7 +15,11 @@
       "Bash(\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb\" uninstall:*)",
       "Bash(taskkill //F //PID 25904 //PID 14328 //PID 18336)",
       "Bash(nvm list:*)",
-      "Bash(fnm list:*)"
+      "Bash(fnm list:*)",
+      "Bash(git check-ignore *)",
+      "Bash(grep -iE 'screenshot|\\\\.png$|\\\\.jpg$|\\\\.jpeg$')",
+      "Bash(xargs -0 grep -lEi 'eyJ[A-Za-z0-9_-]{30,}|sk-[A-Za-z0-9]{30,}|service_role|GOOGLE_CLIENT_SECRET=[A-Za-z0-9_-]{10,}|GEMINI_API_KEY=[A-Za-z0-9_-]{10,}')",
+      "Bash(grep -nEi 'eyJ[A-Za-z0-9_-]{30,}|sk-[A-Za-z0-9]{30,}|service_role|GOOGLE_CLIENT_SECRET=[A-Za-z0-9_-]{10,}|GEMINI_API_KEY=[A-Za-z0-9_-]{10,}' .claude/settings.json .env.example .github/workflows/ci.yml SETUP.md services/api/app/core/config.py services/api/app/db/supabase.py)"
     ]
   }
 }

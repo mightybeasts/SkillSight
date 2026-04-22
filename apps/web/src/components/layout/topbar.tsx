@@ -4,10 +4,36 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import api from '@/lib/api'
+
+type Notification = {
+  id: string
+  type: string
+  title: string
+  body: string | null
+  link_url: string | null
+  is_read: boolean
+  created_at: string
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const s = Math.floor(diff / 1000)
+  if (s < 60) return `${s}s ago`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.floor(h / 24)
+  return `${d}d ago`
+}
 
 export default function Topbar({ sidebarCollapsed }: { sidebarCollapsed: boolean }) {
   const [user, setUser] = useState<{ email?: string; full_name?: string; avatar_url?: string } | null>(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
   const router = useRouter()
 
   useEffect(() => {
@@ -23,6 +49,51 @@ export default function Topbar({ sidebarCollapsed }: { sidebarCollapsed: boolean
     })
   }, [])
 
+  const refreshUnread = () => {
+    api.get('/notifications/unread-count')
+      .then((r) => setUnreadCount(r.data?.count ?? 0))
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    refreshUnread()
+    const id = setInterval(refreshUnread, 30000)
+    return () => clearInterval(id)
+  }, [])
+
+  const openNotifications = async () => {
+    const next = !notifOpen
+    setNotifOpen(next)
+    if (next) {
+      try {
+        const r = await api.get('/notifications/?limit=15')
+        setNotifications(r.data || [])
+      } catch {
+        setNotifications([])
+      }
+    }
+  }
+
+  const markAllRead = async () => {
+    try {
+      await api.post('/notifications/read-all')
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })))
+      setUnreadCount(0)
+    } catch {}
+  }
+
+  const onNotifClick = async (n: Notification) => {
+    setNotifOpen(false)
+    if (!n.is_read) {
+      setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, is_read: true } : x)))
+      setUnreadCount((c) => Math.max(0, c - 1))
+      try {
+        await api.post(`/notifications/${n.id}/read`)
+      } catch {}
+    }
+    if (n.link_url) router.push(n.link_url)
+  }
+
   async function handleSignOut() {
     const supabase = createClient()
     await supabase.auth.signOut()
@@ -36,33 +107,75 @@ export default function Topbar({ sidebarCollapsed }: { sidebarCollapsed: boolean
   return (
     <header
       className={cn(
-        'fixed right-0 top-0 z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white/80 px-6 backdrop-blur-xl transition-all duration-300',
+        'fixed right-0 top-0 z-30 flex h-16 items-center justify-end border-b border-gray-200 bg-white/80 px-6 backdrop-blur-xl transition-all duration-300',
         sidebarCollapsed ? 'left-[68px]' : 'left-60',
       )}
     >
-      {/* Search */}
-      <div className="flex items-center gap-3">
-        <div className="relative">
-          <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Search jobs, candidates..."
-            className="h-10 w-80 rounded-lg border border-gray-200 bg-gray-50 pl-10 pr-4 text-sm text-gray-700 placeholder-gray-400 transition focus:border-gray-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-gray-300"
-          />
-        </div>
-      </div>
-
-      {/* Right side */}
       <div className="flex items-center gap-3">
         {/* Notifications */}
-        <button className="relative flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100">
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
-          </svg>
-          <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500" />
-        </button>
+        <div className="relative">
+          <button
+            onClick={openNotifications}
+            className="relative flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100"
+            aria-label="Notifications"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+            </svg>
+            {unreadCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {notifOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
+              <div className="absolute right-0 z-50 mt-2 w-96 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                  <p className="text-sm font-semibold text-gray-900">Notifications</p>
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={markAllRead}
+                      className="text-xs font-medium text-recruiter-600 hover:text-recruiter-700"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="px-4 py-8 text-center">
+                      <p className="text-sm text-gray-500">No notifications yet</p>
+                    </div>
+                  ) : (
+                    notifications.map((n) => (
+                      <button
+                        key={n.id}
+                        onClick={() => onNotifClick(n)}
+                        className={cn(
+                          'flex w-full items-start gap-3 border-b border-gray-50 px-4 py-3 text-left transition hover:bg-gray-50 last:border-0',
+                          !n.is_read && 'bg-recruiter-50/40',
+                        )}
+                      >
+                        <div className={cn(
+                          'mt-1 h-2 w-2 shrink-0 rounded-full',
+                          n.is_read ? 'bg-transparent' : 'bg-recruiter-500',
+                        )} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-900">{n.title}</p>
+                          {n.body && <p className="mt-0.5 truncate text-xs text-gray-600">{n.body}</p>}
+                          <p className="mt-1 text-[10px] uppercase tracking-wide text-gray-400">{timeAgo(n.created_at)}</p>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         {/* User menu */}
         <div className="relative">

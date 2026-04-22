@@ -3,8 +3,10 @@
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 export default function RecruiterJobsPage() {
+  const router = useRouter()
   const { data: jobs, isLoading } = useQuery({
     queryKey: ['recruiter-jobs'],
     queryFn: () => api.get('/recruiter/jobs/').then((r) => r.data),
@@ -39,7 +41,11 @@ export default function RecruiterJobsPage() {
       ) : (
         <div className="space-y-3">
           {jobs.map((job: any) => (
-            <div key={job.id} className="rounded-xl border border-gray-200 bg-white p-5 transition hover:shadow-sm">
+            <Link
+              key={job.id}
+              href={`/recruiter/jobs/${job.id}`}
+              className="block rounded-xl border border-gray-200 bg-white p-5 transition hover:border-purple-200 hover:shadow-sm"
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-purple-50 text-sm font-bold text-purple-600">{job.title?.[0]}</div>
@@ -50,16 +56,24 @@ export default function RecruiterJobsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${job.status === 'active' ? 'bg-green-50 text-green-700' : job.status === 'draft' ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-600'}`}>{job.status}</span>
-                  <Link href={`/recruiter/jobs/${job.id}/candidates`} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      router.push(`/recruiter/jobs/${job.id}/candidates`)
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
+                  >
                     View Candidates
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
-                  </Link>
+                  </button>
                 </div>
               </div>
               {job.salary_min && job.salary_max && (
                 <p className="mt-2 text-xs text-gray-500">Salary: ${(job.salary_min/1000).toFixed(0)}K - ${(job.salary_max/1000).toFixed(0)}K {job.salary_currency}</p>
               )}
-            </div>
+            </Link>
           ))}
         </div>
       )}
